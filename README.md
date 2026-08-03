@@ -1,76 +1,51 @@
-# 🎬 CineMatch — AI Movie Recommender System
+# Movie Recommender — Streamlit
 
-An AI-powered movie recommender using **Association Rule Mining (FP-Growth)**, built with **Streamlit**. Unlike a static lookup, the recommendation engine itself (preprocessing → transaction encoding → FP-Growth → rule generation) runs **live inside `app.py`**, with sliders to tune it in real time.
+Association-rule-based movie recommender from your MovieLens FP-Growth work.
 
-## How the recommendation engine works
-
-Each user's set of highly-rated movies is treated as a "transaction" — like items in a shopping basket. The engine mines patterns like:
-
-> "Users who loved *Movie A* also tended to love *Movie B*."
-
-**Pipeline (runs inside `app.py` on load):**
-1. Load `movies.csv` and `ratings.csv` (uploaded via sidebar, or read locally).
-2. Merge on `movieId`, drop `timestamp`.
-3. Keep only ratings ≥ your chosen threshold (default 4) — i.e. movies the user actually liked.
-4. Group by `userId` into a list of liked titles → transactions.
-5. One-hot encode transactions with `TransactionEncoder` (mlxtend).
-6. Filter out movies liked by too few users (noise filter, default ≥ 40 users).
-7. Mine frequent itemsets with **FP-Growth** (`min_support`, adjustable).
-8. Generate **association rules** (`metric="confidence"`, adjustable `min_confidence`).
-9. Rules are cached (`st.cache_data`) so the engine only recomputes when your data or parameters change.
-
-**Key metrics per rule:**
-| Metric | Meaning |
-|---|---|
-| **Support** | How often this combination of movies appears across all users |
-| **Confidence** | Given someone liked the antecedent movie, how often they also liked the consequent |
-| **Lift** | How much more likely the consequent is liked, compared to random chance (lift > 1 = positive association) |
-
-## Project structure
-
+## Files
 ```
-.
-├── app.py              # Streamlit app + live recommendation engine
-├── requirements.txt    # Python dependencies
-├── movies.csv           # (your data — place here, or upload via sidebar)
-├── ratings.csv           # (your data — place here, or upload via sidebar)
-└── README.md
+movie_recommender_streamlit/
+├── app.py
+├── requirements.txt
+└── movie_association_rules.csv
 ```
 
-## Setup
+## Run locally
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Deploy on Streamlit Community Cloud
+1. Push this folder to a GitHub repo — `app.py`, `requirements.txt`,
+   `movie_association_rules.csv` at the same level.
+2. share.streamlit.io → **New app** → connect repo → Main file path = `app.py`.
+3. Deploy.
 
-2. **Get your data ready** — either:
-   - Place `movies.csv` and `ratings.csv` in the same folder as `app.py` and check **"Use local movies.csv / ratings.csv"** in the sidebar, **or**
-   - Upload both files directly through the sidebar file uploaders (no local files needed).
+Same `requirements.txt` filename gotcha as your other projects — exact
+filename, no spaces.
 
-3. **Run the app:**
-   ```bash
-   streamlit run app.py
-   ```
+## What it does
+- Parses `antecedents`/`consequents` from the CSV. Your export saved them
+  as Python `frozenset({...})` repr **strings**, not real objects — CSV
+  can't hold Python objects. `parse_frozenset_str()` regexes out the
+  `frozenset(...)` wrapper and uses `ast.literal_eval` to turn it back into
+  a real `frozenset`. If you ever export straight to `.pkl` with `joblib`
+  instead, you can skip this parsing step entirely — worth doing for future
+  projects, it's cleaner and faster.
+- Multi-select "movies you've watched" → subset-matches against
+  `antecedents`, ranks by lift then confidence, same logic as your market
+  basket project.
+- Two expanders: browse all movies in the ruleset, and view all rules
+  sorted by lift.
 
-4. Open the local URL Streamlit gives you (usually `http://localhost:8501`).
-
-## Using the app
-
-- **Sidebar → Engine parameters:** tune minimum rating, minimum users per movie, min support, and min confidence — the engine rebuilds automatically.
-- **Sidebar → Recommend:** pick how many recommendations to show and how to rank them.
-- Search/select a movie you loved in the main panel — recommended movies appear as cards with confidence/lift/support badges.
-- **Explore all association rules** expander lets you browse the full rule table and download it as CSV.
-
-## Tuning tips
-
-- If a movie shows "No association rules found," it likely didn't pass the `min_users` / `min_support` threshold — try lowering them in the sidebar.
-- Lower `min_support` and `min_confidence` → more rules, but some may be weaker/noisier.
-- Higher `min_users` → focuses on well-known movies with enough co-occurrence data; fewer cold-start / obscure titles.
-- This is a **market-basket style recommender**, so it naturally favors popular movies with lots of overlapping viewers.
-
-## Tech stack
-
-- **Engine:** pandas, mlxtend (`TransactionEncoder`, `fpgrowth`, `association_rules`) — runs live in `app.py`
-- **App:** Streamlit
-- **Color theme:** dark navy/purple background with teal & purple accents
+## Heads-up on your dataset
+This CSV only has **6 rules** covering **10 movies**, and every rule has a
+3–4 movie antecedent. That means most single or double movie picks will
+return "no matching rules" — you'll only get recommendations when the
+selected movies happen to match one of those larger antecedent sets. Check
+the "All rules" expander in the app to see exactly which combinations
+trigger a result. If this is a full export (not a trimmed sample), you
+might want to lower `min_support` in your notebook and regenerate with more
+rules before this feels good on LinkedIn — a demo where most searches
+return empty isn't a great first impression for recruiters.
